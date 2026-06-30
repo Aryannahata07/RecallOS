@@ -1,0 +1,62 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  reviews      Review[]
+}
+
+model Source {
+  id         String    @id @default(uuid())
+  url        String    @unique
+  title      String
+  type       String    // "youtube" | "article" | "leetcode" | "chat"
+  rawContent String    @db.Text
+  createdAt  DateTime  @default(now())
+  concepts   Concept[] @relation("SourceConcepts")
+}
+
+model Concept {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String   @db.Text
+  createdAt   DateTime @default(now())
+  sources     Source[] @relation("SourceConcepts")
+  cards       Card[]
+}
+
+model Card {
+  id             String    @id @default(uuid())
+  conceptId      String
+  concept        Concept   @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  question       String    @db.Text
+  answer         String    @db.Text
+  difficulty     Float     // FSRS D
+  stability      Float     // FSRS S
+  lastReviewedAt DateTime?
+  nextReviewDue  DateTime  @default(now())
+  reps           Int       @default(0)
+  lapses         Int       @default(0)
+  createdAt      DateTime  @default(now())
+  reviews        Review[]
+}
+
+model Review {
+  id            String   @id @default(uuid())
+  cardId        String
+  card          Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating        Int      // 1: Again, 2: Hard, 3: Good, 4: Easy
+  scheduledDays Float
+  elapsedDays   Float
+  reviewedAt    DateTime @default(now())
+}

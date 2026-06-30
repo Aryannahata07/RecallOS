@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "RecallOS Catcher",
+  "version": "1.0.0",
+  "description": "Capture LeetCode, Articles, and Chat concepts into your RecallOS spaced-repetition engine.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "*://leetcode.com/*",
+    "*://chatgpt.com/*",
+    "*://claude.ai/*",
+    "*://*.medium.com/*"
+  ],
+  "action": {
+    "default_popup": "popup/index.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
