@@ -1,1 +1,5 @@
 node_modules
+dist
+.env
+/implementation_plan.md
+/task.md
