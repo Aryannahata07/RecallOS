@@ -19,4 +19,5 @@ __exportStar(require("./database/db"), exports);
 __exportStar(require("./queue/queue"), exports);
 __exportStar(require("./queue/worker"), exports);
 __exportStar(require("./queue/extractor"), exports);
+__exportStar(require("./queue/processor"), exports);
 __exportStar(require("./search/typesense"), exports);
