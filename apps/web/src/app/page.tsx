@@ -1,53 +1,140 @@
-import Link from 'next/link';
+import { auth, signOut } from '@/auth';
+import { redirect } from 'next/navigation';
 import { prisma } from '@recallos/shared';
+import Link from 'next/link';
 
 export default async function Dashboard() {
-  // Fetch high-level statistics directly from Postgres (Server Component)
-  const totalConcepts = await prisma.concept.count();
-  const totalCards = await prisma.card.count();
-  
-  // Find out how many cards have crossed the retention threshold
-  const now = new Date();
-  const dueCards = await prisma.card.count({
-    where: {
-      nextReviewDue: {
-        lte: now
-      }
-    }
+  const session = await auth();
+  if (!session?.user) redirect('/login');
+
+  const userId = session.user.id!;
+
+  const totalConcepts = await prisma.concept.count({ where: { userId } });
+  const totalSources = await prisma.source.count({ where: { userId } });
+  const dueNow = await prisma.concept.count({
+    where: { userId, nextReviewDue: { lte: new Date() } }
+  });
+  const masteredConcepts = await prisma.concept.count({
+    where: { userId, stability: { gte: 21 } }
   });
 
+  const recentConcepts = await prisma.concept.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    take: 5,
+    include: { sources: true }
+  });
+
+  const sourceIcon = (type: string) => {
+    if (type === 'youtube') return '▶';
+    if (type === 'leetcode') return '🧩';
+    return '📄';
+  };
+
   return (
-    <div className="min-h-screen bg-black text-white p-8 font-sans">
-      <div className="max-w-4xl mx-auto">
-        <header className="flex justify-between items-center mb-12">
-          <h1 className="text-3xl font-bold tracking-tight">RecallOS Dashboard</h1>
-          <Link href="/review" className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-semibold transition-colors">
-            Start Review ({dueCards} Due)
-          </Link>
-        </header>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800">
-            <h3 className="text-zinc-400 text-sm font-medium mb-2 uppercase tracking-wide">Total Concepts</h3>
-            <p className="text-4xl font-bold">{totalConcepts}</p>
-          </div>
-          <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800">
-            <h3 className="text-zinc-400 text-sm font-medium mb-2 uppercase tracking-wide">Total Cards</h3>
-            <p className="text-4xl font-bold">{totalCards}</p>
-          </div>
-          <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 border-l-4 border-l-emerald-500">
-            <h3 className="text-zinc-400 text-sm font-medium mb-2 uppercase tracking-wide">Cards Due Now</h3>
-            <p className="text-4xl font-bold text-emerald-500">{dueCards}</p>
-          </div>
+    <main className="dashboard">
+      <header className="dash-header">
+        <div className="logo">
+          <span className="logo-icon">🧠</span>
+          <h1>RecallOS</h1>
         </div>
+        <p className="tagline">Your Personal Knowledge Operating System</p>
 
-        <div className="mt-12 bg-zinc-900/50 rounded-xl border border-zinc-800 p-6">
-          <h2 className="text-xl font-semibold mb-4">How to add cards?</h2>
-          <p className="text-zinc-400 leading-relaxed">
-            Use the <strong>RecallOS Chrome Extension</strong> to capture deep technical concepts from LeetCode problems, ChatGPT conversations, or Medium articles. The background worker will automatically extract active-recall flashcards and semantically deduplicate concepts in real-time.
-          </p>
+        {/* User nav */}
+        <div className="user-nav">
+          {session.user.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={session.user.image}
+              alt={session.user.name || 'User'}
+              className="user-avatar"
+            />
+          )}
+          <div className="user-info">
+            <span className="user-name">{session.user.name || session.user.email}</span>
+            <span className="user-email">{session.user.email}</span>
+          </div>
+          <form action={async () => {
+            'use server';
+            await signOut({ redirectTo: '/login' });
+          }}>
+            <button type="submit" className="signout-btn">Sign Out</button>
+          </form>
         </div>
-      </div>
-    </div>
+      </header>
+
+      {/* Stats Grid */}
+      <section className="stats-grid">
+        <div className="stat-card accent-blue">
+          <span className="stat-num">{totalConcepts}</span>
+          <span className="stat-label">Concepts Learned</span>
+        </div>
+        <div className="stat-card accent-orange">
+          <span className="stat-num">{dueNow}</span>
+          <span className="stat-label">Due for Review</span>
+        </div>
+        <div className="stat-card accent-green">
+          <span className="stat-num">{masteredConcepts}</span>
+          <span className="stat-label">Mastered</span>
+        </div>
+        <div className="stat-card accent-purple">
+          <span className="stat-num">{totalSources}</span>
+          <span className="stat-label">Sources Captured</span>
+        </div>
+      </section>
+
+      {/* CTA */}
+      {dueNow > 0 && (
+        <section className="review-cta">
+          <div className="cta-content">
+            <h2>🔥 {dueNow} concept{dueNow > 1 ? 's' : ''} waiting for review</h2>
+            <p>Keep your memory sharp — your streak depends on it!</p>
+          </div>
+          <Link href="/review" className="cta-btn">Start Review Session →</Link>
+        </section>
+      )}
+
+      {/* Recent Concepts */}
+      <section className="recent-section">
+        <h2>Recently Captured</h2>
+        {recentConcepts.length === 0 ? (
+          <div className="empty-state">
+            <p>No concepts yet! Install the Chrome Extension and capture your first LeetCode problem or YouTube video.</p>
+          </div>
+        ) : (
+          <div className="concept-list">
+            {recentConcepts.map(concept => (
+              <div key={concept.id} className="concept-card">
+                <div className="concept-card-header">
+                  <h3>{concept.name}</h3>
+                  <span className={`stability-badge ${concept.stability >= 21 ? 'mastered' : concept.stability >= 7 ? 'learning' : 'new'}`}>
+                    {concept.stability >= 21 ? '🏆 Mastered' : concept.stability >= 7 ? '📈 Learning' : '🌱 New'}
+                  </span>
+                </div>
+                <p className="concept-card-desc">{concept.description}</p>
+                {concept.keyPrinciples.length > 0 && (
+                  <ul className="principles-preview">
+                    {concept.keyPrinciples.slice(0, 2).map((p, i) => (
+                      <li key={i}>✓ {p}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="concept-card-footer">
+                  {concept.sources.length > 0 ? (
+                    concept.sources.map(s => (
+                      <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer" className="source-link">
+                        {sourceIcon(s.type)} {s.title}
+                      </a>
+                    ))
+                  ) : (
+                    <span className="source-link empty">📝 Manual Entry</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
   );
 }

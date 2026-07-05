@@ -7,8 +7,12 @@
     "packages/*"
   ],
   "scripts": {
+    "dev:all": "docker-compose up -d && concurrently \"npm run dev:web\" \"npm run worker -w packages/shared\"",
     "dev:web": "npm run dev -w apps/web",
     "build:web": "npm run build -w apps/web",
     "test:shared": "npm test -w packages/shared"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
   }
 }

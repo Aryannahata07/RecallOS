@@ -5,9 +5,11 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "worker": "tsc && node --env-file=../../.env dist/queue/run-worker.js",
     "test": "jest"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "bullmq": "^5.79.2",

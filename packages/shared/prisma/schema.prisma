@@ -6,57 +6,112 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ─── NextAuth Required Models ─────────────────────────────────────────────────
+
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  reviews      Review[]
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // null for OAuth-only users
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]
+  concepts  Concept[]
+  sources   Source[]
 }
 
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── RecallOS Domain Models ───────────────────────────────────────────────────
+
+// A Source is the original URL that was captured (YouTube, LeetCode, article).
+// Every concept traces back to one or more sources.
 model Source {
   id         String    @id @default(uuid())
-  url        String    @unique
+  url        String
   title      String
   type       String    // "youtube" | "article" | "leetcode" | "chat"
   rawContent String    @db.Text
   createdAt  DateTime  @default(now())
-  concepts   Concept[] @relation("SourceConcepts")
+
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  concepts Concept[] @relation("SourceConcepts")
+
+  @@unique([url, userId])
 }
 
+// A Concept is the atomic unit of knowledge.
+// Instead of storing static Q&A cards, we store a rich "Knowledge Blueprint"
+// that can dynamically generate Flashcards, Quizzes, and Quick Summaries on demand.
 model Concept {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String   @db.Text
-  createdAt   DateTime @default(now())
-  sources     Source[] @relation("SourceConcepts")
-  cards       Card[]
-}
-
-model Card {
-  id             String    @id @default(uuid())
-  conceptId      String
-  concept        Concept   @relation(fields: [conceptId], references: [id], onDelete: Cascade)
-  question       String    @db.Text
-  answer         String    @db.Text
-  difficulty     Float     // FSRS D
-  stability      Float     // FSRS S
-  lastReviewedAt DateTime?
-  nextReviewDue  DateTime  @default(now())
-  reps           Int       @default(0)
-  lapses         Int       @default(0)
-  createdAt      DateTime  @default(now())
-  reviews        Review[]
-}
-
-model Review {
   id            String   @id @default(uuid())
-  cardId        String
-  card          Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rating        Int      // 1: Again, 2: Hard, 3: Good, 4: Easy
-  scheduledDays Float
-  elapsedDays   Float
-  reviewedAt    DateTime @default(now())
+  name          String
+  description   String   @db.Text
+
+  // --- Knowledge Blueprint Fields ---
+  keyPrinciples String[] // Core absolute truths about this concept
+  pitfalls      String[] // Common mistakes or misunderstandings
+  mentalModels  String   @db.Text @default("") // Analogies/mnemonics to make it stick
+
+  // --- FSRS Spaced Repetition Fields ---
+  difficulty    Float    @default(0.3)
+  stability     Float    @default(1.0)
+  nextReviewDue DateTime @default(now())
+  lastReviewedAt DateTime?
+  reps          Int      @default(0)
+  lapses        Int      @default(0)
+
+  createdAt DateTime @default(now())
+
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sources Source[] @relation("SourceConcepts")
+
+  @@unique([name, userId])
 }

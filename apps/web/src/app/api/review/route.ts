@@ -1,64 +1,81 @@
 import { NextResponse } from 'next/server';
+import { auth } from '@/auth';
 import { prisma, FSRSScheduler, Rating, FSRSCard } from '@recallos/shared';
 
 const scheduler = new FSRSScheduler();
 
+// GET /api/review — returns Concepts due for review for the logged-in user
+export async function GET() {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const concepts = await prisma.concept.findMany({
+      where: {
+        userId: session.user.id,
+        nextReviewDue: { lte: new Date() }
+      },
+      include: { sources: true },
+      orderBy: { nextReviewDue: 'asc' },
+      take: 20,
+    });
+    return NextResponse.json({ concepts });
+  } catch (error: any) {
+    console.error('[API] Review GET Error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// POST /api/review — updates FSRS fields on a Concept after user rates it
 export async function POST(req: Request) {
   try {
-    const { cardId, rating } = await req.json();
-
-    if (!cardId || !rating) {
-      return NextResponse.json({ error: 'Missing cardId or rating' }, { status: 400 });
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const dbCard = await prisma.card.findUnique({
-      where: { id: cardId }
+    const { conceptId, rating } = await req.json();
+
+    if (!conceptId || !rating) {
+      return NextResponse.json({ error: 'Missing conceptId or rating' }, { status: 400 });
+    }
+
+    const concept = await prisma.concept.findUnique({
+      where: { id: conceptId, userId: session.user.id }
     });
-
-    if (!dbCard) {
-      return NextResponse.json({ error: 'Card not found' }, { status: 404 });
+    if (!concept) {
+      return NextResponse.json({ error: 'Concept not found' }, { status: 404 });
     }
 
-    // Map the database state into our FSRS mathematical engine's format
-    const currentCardState: FSRSCard = {
-      difficulty: dbCard.difficulty,
-      stability: dbCard.stability,
-      last_reviewed_at: dbCard.lastReviewedAt,
-      next_review_due: dbCard.nextReviewDue,
-      reps: dbCard.reps,
-      lapses: dbCard.lapses
+    const currentState: FSRSCard = {
+      difficulty: concept.difficulty,
+      stability: concept.stability,
+      last_reviewed_at: concept.lastReviewedAt,
+      next_review_due: concept.nextReviewDue,
+      reps: concept.reps,
+      lapses: concept.lapses,
     };
 
     const now = new Date();
-    // 🧠 Run the FSRS math to determine the new memory stability and interval!
-    const result = scheduler.reviewCard(currentCardState, rating as Rating, now);
+    const result = scheduler.reviewCard(currentState, rating as Rating, now);
 
-    // Save the newly calculated decay properties to PostgreSQL
-    await prisma.card.update({
-      where: { id: cardId },
+    await prisma.concept.update({
+      where: { id: conceptId },
       data: {
         difficulty: result.card.difficulty,
         stability: result.card.stability,
-        lastReviewedAt: result.card.last_reviewed_at,
+        lastReviewedAt: now,
         nextReviewDue: result.card.next_review_due,
         reps: result.card.reps,
         lapses: result.card.lapses,
-        reviews: {
-          create: {
-            userId: 'dev-user-id', // Hardcoded for local dev until Auth is added
-            rating,
-            scheduledDays: result.interval,
-            elapsedDays: dbCard.lastReviewedAt 
-              ? (now.getTime() - dbCard.lastReviewedAt.getTime()) / (1000 * 60 * 60 * 24)
-              : 0
-          }
-        }
       }
     });
 
-    return NextResponse.json({ success: true, nextDue: result.card.next_review_due });
+    return NextResponse.json({ success: true, nextDue: result.card.next_review_due, interval: result.interval });
   } catch (error: any) {
-    console.error('[API] Review Error:', error);
+    console.error('[API] Review POST Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

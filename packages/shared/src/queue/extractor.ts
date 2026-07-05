@@ -1,157 +1,172 @@
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import OpenAI from 'openai';
 
-interface LLMConfig {
-  baseURL?: string;
-  apiKey: string;
-  chatModel: string;
-  embeddingModel: string;
-}
-
-const getLLMConfig = (): LLMConfig => {
-  const provider = process.env.LLM_PROVIDER || 'gemini';
-
-  switch (provider) {
-    case 'gemini':
-      return {
-        // Google Gemini supports standard OpenAI endpoints out of the box
-        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-        apiKey: process.env.GEMINI_API_KEY || '',
-        chatModel: 'gemini-1.5-flash',
-        embeddingModel: 'text-embedding-004',
-      };
-    case 'ollama':
-      return {
-        // Local Ollama server endpoint
-        baseURL: process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1',
-        apiKey: 'ollama', // Ollama doesn't require keys, but the SDK expects a non-empty string
-        chatModel: process.env.OLLAMA_MODEL || 'llama3',
-        embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
-      };
-    case 'openai':
-    default:
-      return {
-        baseURL: undefined, // Defaults to standard OpenAI servers
-        apiKey: process.env.OPENAI_API_KEY || '',
-        chatModel: 'gpt-4o-mini',
-        embeddingModel: 'text-embedding-3-small',
-      };
-  }
-};
-
-let openaiInstance: OpenAI | null = null;
-
-const getOpenAIClient = (): { client: OpenAI; chatModel: string; embeddingModel: string } => {
-  const config = getLLMConfig();
-  
-  if (!openaiInstance) {
-    openaiInstance = new OpenAI({
-      baseURL: config.baseURL,
-      apiKey: config.apiKey,
-      dangerouslyAllowBrowser: false,
-    });
-  }
-  
-  return {
-    client: openaiInstance,
-    chatModel: config.chatModel,
-    embeddingModel: config.embeddingModel,
-  };
-};
-
-export interface ExtractedCard {
-  question: string;
-  answer: string;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ExtractedConcept {
   name: string;
   description: string;
-  cards: ExtractedCard[];
+  keyPrinciples: string[];
+  pitfalls: string[];
+  mentalModels: string;
 }
 
-/**
- * Extracts key technical concepts and flashcards in JSON format from raw scraped pages/logs.
- * Compatible with Gemini Free Tier, local Ollama models, and OpenAI.
- */
+// ─── Prompt ───────────────────────────────────────────────────────────────────
+
+const EXTRACTION_PROMPT = (rawContent: string, contentType: string) => `
+You are an expert technical tutor building a "Knowledge Blueprint" for a spaced-repetition learning system.
+
+Analyze the following raw content from a source of type "${contentType}".
+Identify the distinct, teachable technical concepts in this content.
+
+For EACH concept, extract:
+1. "name": A concise, canonical name (e.g. "Kafka Partition Rebalancing", "Sliding Window Pattern").
+2. "description": A 1-2 sentence plain-English explanation.
+3. "keyPrinciples": An array of 3-5 short bullet-point strings — the absolute core truths, not definitions.
+   - Focus on HOW and WHY, not WHAT. Example: "Increasing partitions never reassigns existing data."
+4. "pitfalls": An array of 2-3 common mistakes engineers make with this concept.
+   - Example: "Confusing stability with availability — a system can be stable but unavailable."
+5. "mentalModels": A single paragraph with a vivid analogy or mnemonic that makes this click intuitively.
+   - Example: "Think of a hash map like a massive hotel: the hash function is the receptionist who instantly tells you the exact room number for your friend."
+
+Return ONLY valid JSON in this exact structure:
+{
+  "concepts": [
+    {
+      "name": "...",
+      "description": "...",
+      "keyPrinciples": ["...", "..."],
+      "pitfalls": ["...", "..."],
+      "mentalModels": "..."
+    }
+  ]
+}
+
+Content to analyze (first 8000 chars):
+${rawContent.slice(0, 8000)}
+`;
+
+// ─── Concept Extraction ────────────────────────────────────────────────────────
+
 export const extractConceptsAndCards = async (
   rawContent: string,
   contentType: string
 ): Promise<ExtractedConcept[]> => {
-  const { client, chatModel } = getOpenAIClient();
+  const provider = process.env.LLM_PROVIDER || 'gemini';
 
-  const prompt = `
-    You are an expert technical tutor. Analyze the following raw content from a source of type "${contentType}".
-    Extract the core software engineering, computer science, or system design concepts being explained.
-    
-    For each distinct concept:
-    1. Define a clear, standard name (e.g., "Kafka partition rebalancing" or "Monotonic Queue pattern").
-    2. Write a brief 1-2 sentence description explaining the concept clearly.
-    3. Generate 2 to 4 high-quality active-recall micro-questions and answers about the concept.
-       - Focus questions on critical insights, mechanical trade-offs, or implementation tricks.
-       - AVOID simple dictionary definitions (e.g., DO NOT ask "What is X?"). 
-       - PREFER mechanism questions (e.g., "How does X solve Y?", "Why do we increment the left pointer in Z scenario?").
-       - Keep questions and answers concise.
-
-    Return the result strictly in this JSON format:
-    {
-      "concepts": [
-        {
-          "name": "Concept Name",
-          "description": "Concept Description",
-          "cards": [
-            {
-              "question": "Question text?",
-              "answer": "Answer text."
-            }
-          ]
-        }
-      ]
+  // ── Groq ──────────────────────────────────────────────────────────────────
+  if (provider === 'groq') {
+    const client = new OpenAI({
+      baseURL: 'https://api.groq.com/openai/v1',
+      apiKey: process.env.GROQ_API_KEY || '',
+    });
+    try {
+      const response = await client.chat.completions.create({
+        model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: 'You build Knowledge Blueprints for a spaced-repetition learning system. Output ONLY valid JSON.' },
+          { role: 'user', content: EXTRACTION_PROMPT(rawContent, contentType) },
+        ],
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+      });
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      return parsed.concepts || [];
+    } catch (error: any) {
+      console.error(`[LLM Extraction Error] Groq failed:`, error.message);
+      throw error;
     }
-  `;
+  }
 
+  // ── Gemini ────────────────────────────────────────────────────────────────
+  if (provider === 'gemini') {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash-lite',
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: SchemaType.OBJECT,
+          properties: {
+            concepts: {
+              type: SchemaType.ARRAY,
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  name: { type: SchemaType.STRING },
+                  description: { type: SchemaType.STRING },
+                  keyPrinciples: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                  pitfalls: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                  mentalModels: { type: SchemaType.STRING },
+                },
+                required: ['name', 'description', 'keyPrinciples', 'pitfalls', 'mentalModels'],
+              },
+            },
+          },
+          required: ['concepts'],
+        },
+      },
+    });
+    try {
+      const result = await model.generateContent(EXTRACTION_PROMPT(rawContent, contentType));
+      const parsed = JSON.parse(result.response.text());
+      return parsed.concepts || [];
+    } catch (error: any) {
+      console.error(`[LLM Extraction Error] Gemini failed:`, error.message);
+      throw error;
+    }
+  }
+
+  // ── OpenAI / Ollama ───────────────────────────────────────────────────────
+  const config = provider === 'ollama'
+    ? { baseURL: process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1', apiKey: 'ollama', model: process.env.OLLAMA_MODEL || 'llama3' }
+    : { baseURL: undefined, apiKey: process.env.OPENAI_API_KEY || '', model: 'gpt-4o-mini' };
+  const client = new OpenAI({ baseURL: config.baseURL, apiKey: config.apiKey });
   try {
     const response = await client.chat.completions.create({
-      model: chatModel,
+      model: config.model,
       messages: [
-        {
-          role: 'system',
-          content: 'You extract educational flashcards and concepts from technical texts and output structured JSON.',
-        },
-        {
-          role: 'user',
-          content: `${prompt}\n\nContent to analyze:\n${rawContent}`,
-        },
+        { role: 'system', content: 'You build Knowledge Blueprints for a spaced-repetition learning system. Output ONLY valid JSON.' },
+        { role: 'user', content: EXTRACTION_PROMPT(rawContent, contentType) },
       ],
       response_format: { type: 'json_object' },
       temperature: 0.2,
     });
-
-    const contentText = response.choices[0].message.content || '{}';
-    const parsedData = JSON.parse(contentText);
-    
-    return parsedData.concepts || [];
+    const parsed = JSON.parse(response.choices[0].message.content || '{}');
+    return parsed.concepts || [];
   } catch (error: any) {
-    console.error(`[LLM Extraction Error] Failed using model ${chatModel}:`, error.message);
+    console.error(`[LLM Extraction Error] OpenAI/Ollama failed:`, error.message);
     throw error;
   }
 };
 
-/**
- * Generates vector embeddings for a concept to enable semantic matching.
- * Uses text-embedding-004 on Gemini, nomic-embed-text on Ollama, or text-embedding-3-small on OpenAI.
- */
+// ─── Embedding Generation ─────────────────────────────────────────────────────
+// Groq does not support embeddings — we always use Gemini text-embedding-004 for this.
+// Embeddings use a separate, much cheaper quota than generative requests.
+
 export const generateEmbedding = async (text: string): Promise<number[]> => {
-  const { client, embeddingModel } = getOpenAIClient();
-  
-  try {
-    const response = await client.embeddings.create({
-      model: embeddingModel,
-      input: text,
-    });
-    
-    return response.data[0].embedding;
-  } catch (error: any) {
-    console.error(`[LLM Embedding Error] Failed using model ${embeddingModel}:`, error.message);
-    throw error;
+  const provider = process.env.LLM_PROVIDER || 'gemini';
+
+  if (provider === 'groq' || provider === 'gemini') {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+    const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    try {
+      const result = await model.embedContent(text);
+      return result.embedding.values;
+    } catch (error: any) {
+      console.error(`[LLM Embedding Error] Gemini embeddings failed (non-fatal):`, error.message);
+      return new Array(768).fill(0); // graceful degradation — skip deduplication
+    }
   }
+
+  if (provider === 'ollama') {
+    const client = new OpenAI({ baseURL: process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1', apiKey: 'ollama' });
+    const res = await client.embeddings.create({ model: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text', input: text });
+    return res.data[0].embedding;
+  }
+
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' });
+  const res = await client.embeddings.create({ model: 'text-embedding-3-small', input: text });
+  return res.data[0].embedding;
 };
