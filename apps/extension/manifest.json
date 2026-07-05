@@ -16,7 +16,11 @@
     "*://*.medium.com/*"
   ],
   "action": {
-    "default_popup": "popup/index.html"
+    "default_popup": "popup/index.html",
+    "default_icon": "popup/logo-creme.png"
+  },
+  "icons": {
+    "128": "popup/logo-creme.png"
   },
   "background": {
     "service_worker": "background.js"

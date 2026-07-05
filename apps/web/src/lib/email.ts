@@ -7,11 +7,11 @@ const fromEmail = process.env.EMAIL_FROM || 'RecallOS <onboarding@resend.dev>';
 export async function sendOtpEmail(email: string, otp: string) {
   // Always log to terminal in development for fast debugging
   console.log(`\n==================================================`);
-  console.log(`[Email Service] 🔑 6-Digit OTP for ${email}: ${otp}`);
+  console.log(`[Email Service] Verification OTP for ${email}: ${otp}`);
   console.log(`==================================================\n`);
 
   if (!resend) {
-    console.warn('[Email Service] RESEND_API_KEY is not configured in .env.local — logged OTP to terminal above.');
+    console.warn('[Email Service] RESEND_API_KEY is not configured in .env — logged OTP to terminal above.');
     return { success: true, mode: 'console' };
   }
 
@@ -19,11 +19,10 @@ export async function sendOtpEmail(email: string, otp: string) {
     const { data, error } = await resend.emails.send({
       from: fromEmail,
       to: [email],
-      subject: `🧠 ${otp} is your RecallOS verification code`,
+      subject: `${otp} is your RecallOS verification code`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background-color: #0a0b0f; color: #e8eaf0; border-radius: 16px; border: 1px solid #252736;">
           <div style="text-align: center; margin-bottom: 24px;">
-            <span style="font-size: 36px;">🧠</span>
             <h1 style="font-size: 24px; font-weight: 700; margin: 8px 0 0 0; background: linear-gradient(135deg, #4f8ef7, #9f7aea); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">RecallOS</h1>
           </div>
           
