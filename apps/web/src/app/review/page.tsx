@@ -9,7 +9,7 @@ export default async function ReviewPage() {
 
   const userId = session.user.id!;
 
-  const [totalConcepts, totalSources, dueNow, masteredConcepts, recentConcepts] = await Promise.all([
+  const [totalConcepts, totalSources, dueNow, masteredConcepts, allConcepts, allSources] = await Promise.all([
     prisma.concept.count({ where: { userId } }),
     prisma.source.count({ where: { userId } }),
     prisma.concept.count({ where: { userId, nextReviewDue: { lte: new Date() } } }),
@@ -17,8 +17,12 @@ export default async function ReviewPage() {
     prisma.concept.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      take: 20,
       include: { sources: true }
+    }),
+    prisma.source.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: { concepts: true }
     })
   ]);
 
@@ -38,7 +42,8 @@ export default async function ReviewPage() {
       totalSources={totalSources}
       dueNow={dueNow}
       masteredConcepts={masteredConcepts}
-      recentConcepts={recentConcepts}
+      allConcepts={allConcepts as any}
+      allSources={allSources as any}
       signOutAction={handleSignOut}
       initialTab="review"
     />

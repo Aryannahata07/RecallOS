@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, FileText, Youtube, Code2, MessageSquare } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, FileText, Video, Code2, MessageSquare } from 'lucide-react';
 
 export default function SignupPage() {
   const router = useRouter();

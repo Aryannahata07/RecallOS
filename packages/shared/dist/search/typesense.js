@@ -92,9 +92,15 @@ exports.findSimilarConcept = findSimilarConcept;
  * Indexes/upserts a concept document in Typesense.
  */
 const indexConcept = async (concept) => {
-    await exports.typesenseClient
-        .collections(exports.CONCEPTS_COLLECTION)
-        .documents()
-        .upsert(concept);
+    try {
+        await (0, exports.setupTypesenseSchema)();
+        await exports.typesenseClient
+            .collections(exports.CONCEPTS_COLLECTION)
+            .documents()
+            .upsert(concept);
+    }
+    catch (error) {
+        console.warn('[Typesense Index Warning]:', error.message || error);
+    }
 };
 exports.indexConcept = indexConcept;

@@ -109,8 +109,13 @@ export const findSimilarConcept = async (
  * Indexes/upserts a concept document in Typesense.
  */
 export const indexConcept = async (concept: TypesenseConceptDocument): Promise<void> => {
-  await typesenseClient
-    .collections(CONCEPTS_COLLECTION)
-    .documents()
-    .upsert(concept);
+  try {
+    await setupTypesenseSchema();
+    await typesenseClient
+      .collections(CONCEPTS_COLLECTION)
+      .documents()
+      .upsert(concept);
+  } catch (error: any) {
+    console.warn('[Typesense Index Warning]:', error.message || error);
+  }
 };

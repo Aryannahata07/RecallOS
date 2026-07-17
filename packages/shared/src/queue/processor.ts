@@ -23,49 +23,57 @@ export const processIngestionJob = async (job: Job<ConceptIngestionJobPayload>) 
   for (const extracted of extractedConcepts) {
     let conceptId: string | undefined;
 
-    // Quick exact name match first — scoped to user (saves embedding API calls)
+    // Quick exact name match first — scoped to user
     const exactMatch = await prisma.concept.findUnique({
       where: { name_userId: { name: extracted.name, userId } }
     });
 
     if (exactMatch) {
       conceptId = exactMatch.id;
-      // Update the blueprint with new info from this source
+      // Update the blueprint & connect source
       await prisma.concept.update({
         where: { id: conceptId },
         data: {
           keyPrinciples: extracted.keyPrinciples,
           pitfalls: extracted.pitfalls,
           mentalModels: extracted.mentalModels,
+          sources: { connect: { id: source.id } },
         }
       });
       console.log(`[Processor] Updated existing concept: ${extracted.name}`);
     } else {
       console.log(`[Processor] Generating embedding for: ${extracted.name}`);
-      const embedding = await generateEmbedding(`${extracted.name}: ${extracted.description}`);
-      const similar = await findSimilarConcept(embedding);
+      let embedding: number[] = [];
+      try {
+        embedding = await generateEmbedding(`${extracted.name}: ${extracted.description}`);
+      } catch (embErr) {
+        console.warn(`[Processor] Embedding generation warning for ${extracted.name}:`, embErr);
+      }
 
-      if (similar) {
-        // Semantically similar concept found — merge into it (only if it belongs to this user)
-        const similarConcept = await prisma.concept.findFirst({
-          where: { id: similar.id, userId }
-        });
-        if (similarConcept) {
-          conceptId = similarConcept.id;
-          await prisma.concept.update({
-            where: { id: conceptId },
-            data: {
-              keyPrinciples: extracted.keyPrinciples,
-              pitfalls: extracted.pitfalls,
-              mentalModels: extracted.mentalModels,
-            }
+      if (embedding.length > 0) {
+        const similar = await findSimilarConcept(embedding);
+        if (similar) {
+          const similarConcept = await prisma.concept.findFirst({
+            where: { id: similar.id, userId }
           });
-          console.log(`[Processor] Merged into similar concept: ${similar.name}`);
+          if (similarConcept) {
+            conceptId = similarConcept.id;
+            await prisma.concept.update({
+              where: { id: conceptId },
+              data: {
+                keyPrinciples: extracted.keyPrinciples,
+                pitfalls: extracted.pitfalls,
+                mentalModels: extracted.mentalModels,
+                sources: { connect: { id: source.id } },
+              }
+            });
+            console.log(`[Processor] Merged into similar concept: ${similar.name}`);
+          }
         }
       }
 
       if (!conceptId) {
-        // Brand new concept — create it with the full Knowledge Blueprint
+        // Brand new concept — create it with source attached immediately
         const newConcept = await prisma.concept.create({
           data: {
             name: extracted.name,
@@ -73,29 +81,27 @@ export const processIngestionJob = async (job: Job<ConceptIngestionJobPayload>) 
             keyPrinciples: extracted.keyPrinciples,
             pitfalls: extracted.pitfalls,
             mentalModels: extracted.mentalModels,
-            // FSRS defaults — will be updated on first review
             difficulty: 0.3,
             stability: 1.0,
             userId,
+            sources: {
+              connect: { id: source.id }
+            }
           }
         });
         conceptId = newConcept.id;
 
-        await indexConcept({
-          id: conceptId,
-          name: extracted.name,
-          description: extracted.description,
-          embedding
-        });
-        console.log(`[Processor] Created new concept: ${extracted.name}`);
+        if (embedding.length > 0) {
+          await indexConcept({
+            id: conceptId,
+            name: extracted.name,
+            description: extracted.description,
+            embedding
+          });
+        }
+        console.log(`[Processor] Created new concept with linked source: ${extracted.name}`);
       }
     }
-
-    // Always link the source to the resolved concept
-    await prisma.concept.update({
-      where: { id: conceptId },
-      data: { sources: { connect: { id: source.id } } }
-    });
   }
   console.log(`[Processor] Done processing ${url}`);
 };

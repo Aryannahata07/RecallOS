@@ -11,7 +11,10 @@ const EXTRACTION_PROMPT = (rawContent, contentType) => `
 You are an expert technical tutor building a "Knowledge Blueprint" for a spaced-repetition learning system.
 
 Analyze the following raw content from a source of type "${contentType}".
-Identify the distinct, teachable technical concepts in this content.
+Identify ALL distinct, teachable technical concepts in this content.
+- Do NOT restrict the output to 3 concepts.
+- If the content discusses 1 main concept, return 1 concept.
+- If the content covers 5, 8, or more distinct concepts, extract all 5, 8, or more concepts dynamically based on the actual depth of the text.
 
 For EACH concept, extract:
 1. "name": A concise, canonical name (e.g. "Kafka Partition Rebalancing", "Sliding Window Pattern").
@@ -36,8 +39,8 @@ Return ONLY valid JSON in this exact structure:
   ]
 }
 
-Content to analyze (first 8000 chars):
-${rawContent.slice(0, 8000)}
+Content to analyze (up to 10000 chars):
+${rawContent.slice(0, 10000)}
 `;
 // ─── Concept Extraction ────────────────────────────────────────────────────────
 const extractConceptsAndCards = async (rawContent, contentType) => {

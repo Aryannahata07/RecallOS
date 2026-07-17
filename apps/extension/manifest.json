@@ -13,6 +13,7 @@
     "*://leetcode.com/*",
     "*://chatgpt.com/*",
     "*://claude.ai/*",
+    "*://gemini.google.com/*",
     "*://*.medium.com/*"
   ],
   "action": {
@@ -22,6 +23,12 @@
   "icons": {
     "128": "popup/logo-creme.png"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["popup/logo-creme.png", "popup/logo.png"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "background": {
     "service_worker": "background.js"
   },
