@@ -40,13 +40,19 @@ Mental Model: ${concept.mentalModels}
     let prompt = '';
 
     if (mode === 'summary') {
-      prompt = `Based on this Knowledge Blueprint, generate a clear, structured quick-revision summary.
-Format it with:
-- A 2-sentence overview
-- 3-5 bullet points of key principles (use ✓ prefix)
-- 2-3 bullet points of pitfalls to avoid (use ⚠ prefix)
-- The mental model/analogy
-Keep it scannable and punchy.
+      prompt = `Based on this Knowledge Blueprint, generate an in-depth, comprehensive quick-revision guide.
+Do NOT follow a rigid or fixed template. Adapt the sections dynamically based on the context of the concept.
+
+Always include the following core sections:
+- Overview: An in-depth, detailed explanation of the concept, its main purposes, and its context in system architecture.
+- Key Principles: The core truths, design rules, and technical concepts (use ✓ prefix).
+
+Additionally, include the following sections ONLY when they are relevant and make sense for the topic:
+1. Core Mechanics & Workflow: Explain step-by-step how the concept operates or is implemented.
+2. Comparative Analysis & Trade-offs: Detailed pros vs. cons, latency vs. consistency, or comparison with alternatives.
+3. Probable Interview Questions & Answers: Generate 2-3 high-yield, realistic interview questions (conceptual, architectural, or practical) that could be asked on this topic, followed by complete, detailed answers.
+
+Structure the guide naturally to make it highly technical, long, and rich in depth, prioritizing high-yield conceptual clarity over strict formatting templates.
 
 Blueprint:
 ${blueprintContext}`;

@@ -53,7 +53,7 @@ function scrapeChatContent() {
   }
 
   // Clean extra blank lines
-  return text.split('\n').map(l => l.trim()).filter(Boolean).join('\n').substring(0, 35000);
+  return text.split('\n').map(l => l.trim()).filter(Boolean).join('\n').substring(0, 40000);
 }
 
 // Scrape YouTube video details & transcript without recommended sidebar videos or comments
@@ -84,18 +84,18 @@ function scrapeYouTubeContent() {
     text += `--- Video Transcript ---\n${transcript}\n\n`;
   }
 
-  return text.substring(0, 35000);
+  return text.substring(0, 40000);
 }
 
 // Scrape LeetCode problem description & code
 function scrapeLeetCodeContent() {
   const descNode = document.querySelector('[data-track-load="description_content"]');
-  if (descNode) return descNode.innerText.trim().substring(0, 35000);
+  if (descNode) return descNode.innerText.trim().substring(0, 40000);
 
   const main = document.querySelector('main') || document.body;
   const clone = main.cloneNode(true);
   clone.querySelectorAll('nav, header, footer, button, svg').forEach(el => el.remove());
-  return clone.innerText.trim().substring(0, 35000);
+  return clone.innerText.trim().substring(0, 40000);
 }
 
 // Scrape General Web Articles & Pages
@@ -110,7 +110,7 @@ function scrapeArticleContent() {
   ];
   clone.querySelectorAll(noiseSelectors.join(', ')).forEach(el => el.remove());
 
-  return clone.innerText.split('\n').map(l => l.trim()).filter(Boolean).join('\n').substring(0, 35000);
+  return clone.innerText.split('\n').map(l => l.trim()).filter(Boolean).join('\n').substring(0, 40000);
 }
 
 // Custom scraping logic depending on the platform
@@ -140,7 +140,7 @@ function injectFAB() {
   const btn = document.createElement('button');
   btn.id = 'recallos-fab';
 
-  const logoUrl = chrome.runtime.getURL('popup/logo.png');
+  const logoUrl = chrome.runtime.getURL('popup/logo-creme.png');
 
   const setContent = (text, isSubmitting = false) => {
     btn.innerHTML = `

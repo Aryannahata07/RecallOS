@@ -10,21 +10,21 @@ const openai_1 = __importDefault(require("openai"));
 const EXTRACTION_PROMPT = (rawContent, contentType) => `
 You are an expert technical tutor building a "Knowledge Blueprint" for a spaced-repetition learning system.
 
-Analyze the following raw content from a source of type "${contentType}".
-Identify ALL distinct, teachable technical concepts in this content.
-- Do NOT restrict the output to 3 concepts.
-- If the content discusses 1 main concept, return 1 concept.
-- If the content covers 5, 8, or more distinct concepts, extract all 5, 8, or more concepts dynamically based on the actual depth of the text.
+Analyze the raw content below from a source of type "${contentType}".
+CRITICAL GRANULARITY RULES (AGGREGATION OVER SPLITTING):
+- Do NOT over-split subtopics, definitions, pillars, components, or aspects of a single overarching theorem, framework, pattern, or algorithm into separate concepts.
+- If a document is about a single primary subject (e.g., "CAP Theorem", "Deadlock", "Serverless Architecture"), extract exactly ONE comprehensive concept.
+  - Example: For "CAP Theorem", do NOT create separate concepts for "Consistency", "Availability", "Partition Tolerance", "CP System", "AP System", or "CA System". Group all of these definitions and configurations into a single, cohesive concept named "CAP Theorem".
+  - Example: For "Deadlock", do NOT split into "Deadlock Detection", "Deadlock Avoidance", etc. Group everything into "Deadlock".
+- Only extract multiple concepts if the text covers genuinely distinct, separate, and unrelated topics (e.g., a page covering both "Deadlock" and "CPU Scheduling").
+- Do NOT create separate concepts for "use cases", "challenges", "reasons", "components", "pros/cons", or "how to avoid" of the same main topic. Consolidate them.
 
-For EACH concept, extract:
-1. "name": A concise, canonical name (e.g. "Kafka Partition Rebalancing", "Sliding Window Pattern").
-2. "description": A 1-2 sentence plain-English explanation.
-3. "keyPrinciples": An array of 3-5 short bullet-point strings — the absolute core truths, not definitions.
-   - Focus on HOW and WHY, not WHAT. Example: "Increasing partitions never reassigns existing data."
-4. "pitfalls": An array of 2-3 common mistakes engineers make with this concept.
-   - Example: "Confusing stability with availability — a system can be stable but unavailable."
-5. "mentalModels": A single paragraph with a vivid analogy or mnemonic that makes this click intuitively.
-   - Example: "Think of a hash map like a massive hotel: the hash function is the receptionist who instantly tells you the exact room number for your friend."
+For EACH extracted concept, provide deep, high-value, thorough content:
+1. "name": A concise, canonical name (e.g. "Serverless Architecture", "Deadlock").
+2. "description": A detailed, in-depth explanation (2-3 rich sentences) outlining the core definition, key use cases, and technical trade-offs.
+3. "keyPrinciples": An array of 4-6 detailed, thorough bullet points. Focus on HOW and WHY (mechanisms, execution flow, pros/cons, and core operational truths). Avoid short, generic definitions. Make them technically comprehensive.
+4. "pitfalls": An array of 3-4 common mistakes, anti-patterns, or performance gotchas engineers face with this concept, explained with technical depth.
+5. "mentalModels": A detailed paragraph providing a vivid analogy or mnemonic to build intuitive understanding.
 
 Return ONLY valid JSON in this exact structure:
 {
@@ -39,8 +39,8 @@ Return ONLY valid JSON in this exact structure:
   ]
 }
 
-Content to analyze (up to 10000 chars):
-${rawContent.slice(0, 10000)}
+Content to analyze (up to 40000 chars):
+${rawContent.slice(0, 40000)}
 `;
 // ─── Concept Extraction ────────────────────────────────────────────────────────
 const extractConceptsAndCards = async (rawContent, contentType) => {
@@ -134,13 +134,13 @@ const extractConceptsAndCards = async (rawContent, contentType) => {
 };
 exports.extractConceptsAndCards = extractConceptsAndCards;
 // ─── Embedding Generation ─────────────────────────────────────────────────────
-// Groq does not support embeddings — we always use Gemini text-embedding-004 for this.
+// Groq does not support embeddings — we always use Gemini gemini-embedding-001 for this.
 // Embeddings use a separate, much cheaper quota than generative requests.
 const generateEmbedding = async (text) => {
     const provider = process.env.LLM_PROVIDER || 'gemini';
     if (provider === 'groq' || provider === 'gemini') {
         const genAI = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-        const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
         try {
             const result = await model.embedContent(text);
             return result.embedding.values;

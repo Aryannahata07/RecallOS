@@ -35,7 +35,7 @@ export const setupTypesenseSchema = async () => {
     console.log('[Typesense] Schema already initialized');
   } catch (error: any) {
     // If retrieval fails with 404, we create it
-    if (error.status === 404 || error.message?.includes('not found')) {
+    if (error.httpStatus === 404 || error.status === 404 || error.message?.toLowerCase().includes('not found')) {
       console.log('[Typesense] Creating concepts collection schema...');
       await typesenseClient.collections().create({
         name: CONCEPTS_COLLECTION,
@@ -46,7 +46,7 @@ export const setupTypesenseSchema = async () => {
           {
             name: 'embedding',
             type: 'float[]',
-            num_dim: 1536, // Standard OpenAI text-embedding-3-small dimension
+            num_dim: 768, // Match Gemini's text-embedding-004 size (768 dimensions)
             index: true,
             vec_dist: 'cosine',
           },

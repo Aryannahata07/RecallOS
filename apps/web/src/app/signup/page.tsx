@@ -61,9 +61,13 @@ export default function SignupPage() {
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Verification failed'); setLoading(false); return; }
       const loginRes = await signIn('credentials', { email, password, redirect: false });
-      setLoading(false);
-      if (loginRes?.error) { setError('Account created, but sign-in failed. Please log in.'); }
-      else { router.push('/'); router.refresh(); }
+      if (loginRes?.error) {
+        setError('Account created, but sign-in failed. Please log in.');
+        setLoading(false);
+      } else {
+        router.push('/');
+        router.refresh();
+      }
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
       setLoading(false);
