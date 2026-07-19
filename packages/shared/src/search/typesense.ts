@@ -1,4 +1,6 @@
 import { Client } from 'typesense';
+import { prisma } from '../database/db';
+import { generateEmbedding } from '../queue/extractor';
 
 const host = process.env.TYPESENSE_HOST || 'localhost';
 const port = parseInt(process.env.TYPESENSE_PORT || '8108', 10);
@@ -29,6 +31,47 @@ export interface TypesenseConceptDocument {
 /**
  * Ensures the 'concepts' collection schema is initialized in Typesense.
  */
+export const reindexAllConcepts = async () => {
+  console.log('[Typesense] Starting automatic re-indexing of all concepts from Postgres...');
+  try {
+    const concepts = await prisma.concept.findMany({
+      select: {
+        id: true,
+        name: true,
+        description: true,
+      },
+    });
+
+    console.log(`[Typesense] Found ${concepts.length} concepts to index.`);
+    let indexedCount = 0;
+
+    for (const concept of concepts) {
+      try {
+        const textToEmbed = `${concept.name}: ${concept.description}`;
+        const embedding = await generateEmbedding(textToEmbed);
+
+        if (embedding && embedding.length > 0) {
+          await typesenseClient
+            .collections(CONCEPTS_COLLECTION)
+            .documents()
+            .upsert({
+              id: concept.id,
+              name: concept.name,
+              description: concept.description,
+              embedding,
+            });
+          indexedCount++;
+        }
+      } catch (innerError: any) {
+        console.error(`[Typesense] Failed to index concept ${concept.id}:`, innerError.message || innerError);
+      }
+    }
+    console.log(`[Typesense] Automatic re-indexing completed. Indexed ${indexedCount} of ${concepts.length} concepts.`);
+  } catch (error: any) {
+    console.error('[Typesense] Critical error during automatic re-indexing:', error.message || error);
+  }
+};
+
 export const setupTypesenseSchema = async () => {
   try {
     await typesenseClient.collections(CONCEPTS_COLLECTION).retrieve();
@@ -53,6 +96,11 @@ export const setupTypesenseSchema = async () => {
         ],
       });
       console.log('[Typesense] Schema created successfully');
+      
+      // Asynchronously trigger re-indexing in the background
+      reindexAllConcepts().catch(err => {
+        console.error('[Typesense] Background re-indexing failed:', err);
+      });
     } else {
       console.error('[Typesense] Error retrieving schema:', error);
       throw error;

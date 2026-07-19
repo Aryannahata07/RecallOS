@@ -93,7 +93,7 @@ export const processIngestionJob = async (job: Job<ConceptIngestionJobPayload>) 
 
         if (embedding.length > 0) {
           await indexConcept({
-            id: conceptId,
+            id: newConcept.id,
             name: extracted.name,
             description: extracted.description,
             embedding

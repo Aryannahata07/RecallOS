@@ -57,22 +57,42 @@ Structure the guide naturally to make it highly technical, long, and rich in dep
 Blueprint:
 ${blueprintContext}`;
     } else if (mode === 'flashcard') {
-      prompt = `Based on this Knowledge Blueprint, generate ONE brand-new active-recall flashcard.
-This should be DIFFERENT from a typical definition question.
-Focus on: mechanism, trade-offs, edge cases, or "why" questions.
-Return JSON: { "question": "...", "answer": "..." }
+      prompt = `Based on this Knowledge Blueprint, generate exactly 3 distinct active-recall flashcards.
+Each flashcard must focus on mechanisms, design trade-offs, edge cases, or "why" questions rather than simple definitions.
+Return the result strictly in this JSON format:
+{
+  "flashcards": [
+    {
+      "question": "...",
+      "answer": "..."
+    },
+    {
+      "question": "...",
+      "answer": "..."
+    },
+    {
+      "question": "...",
+      "answer": "..."
+    }
+  ]
+}
 
 Blueprint:
 ${blueprintContext}`;
     } else if (mode === 'quiz') {
-      prompt = `Based on this Knowledge Blueprint, generate a multiple-choice scenario quiz question.
-The scenario should be realistic (e.g., a system design decision, a debugging situation, a code review comment).
-Return JSON: {
-  "scenario": "...",
-  "question": "...",
-  "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
-  "correctIndex": 0,
-  "explanation": "..."
+      prompt = `Based on this Knowledge Blueprint, generate exactly 5 distinct multiple-choice scenario-based quiz questions.
+Each scenario must be realistic (e.g., a system design decision, a debugging situation, a code review comment).
+Return the result strictly in this JSON format:
+{
+  "quizzes": [
+    {
+      "scenario": "...",
+      "question": "...",
+      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+      "correctIndex": 0,
+      "explanation": "..."
+    }
+  ]
 }
 
 Blueprint:
@@ -108,10 +128,78 @@ ${blueprintContext}`;
     // Parse JSON for flashcard/quiz modes
     if (mode === 'flashcard' || mode === 'quiz') {
       try {
-        const parsed = JSON.parse(generatedText);
-        return NextResponse.json({ mode, data: parsed, sources: concept.sources });
-      } catch {
-        return NextResponse.json({ mode, data: { raw: generatedText }, sources: concept.sources });
+        let cleanText = generatedText.trim();
+        if (cleanText.startsWith('```')) {
+          const match = cleanText.match(/^(?:```(?:json)?\s*)([\s\S]*?)(?:\s*```)$/);
+          if (match) {
+            cleanText = match[1].trim();
+          }
+        }
+        
+        const parsed = JSON.parse(cleanText);
+        
+        if (mode === 'flashcard') {
+          let flashcards: any[] = [];
+          if (Array.isArray(parsed)) {
+            flashcards = parsed;
+          } else if (parsed && Array.isArray(parsed.flashcards)) {
+            flashcards = parsed.flashcards;
+          } else if (parsed && typeof parsed === 'object') {
+            if (parsed.question && parsed.answer) {
+              flashcards = [parsed];
+            } else {
+              const arrayKey = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
+              if (arrayKey) {
+                flashcards = parsed[arrayKey];
+              }
+            }
+          }
+          
+          if (flashcards.length === 0) {
+            throw new Error('No flashcards found in response');
+          }
+          
+          return NextResponse.json({ mode, data: { flashcards }, sources: concept.sources });
+        } else {
+          // mode === 'quiz'
+          let quizzes: any[] = [];
+          if (Array.isArray(parsed)) {
+            quizzes = parsed;
+          } else if (parsed && Array.isArray(parsed.quizzes)) {
+            quizzes = parsed.quizzes;
+          } else if (parsed && typeof parsed === 'object') {
+            if (parsed.question && parsed.options) {
+              quizzes = [parsed];
+            } else {
+              const arrayKey = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
+              if (arrayKey) {
+                quizzes = parsed[arrayKey];
+              }
+            }
+          }
+          
+          if (quizzes.length === 0) {
+            throw new Error('No quizzes found in response');
+          }
+          
+          quizzes = quizzes.map((q: any) => ({
+            scenario: q.scenario || 'Scenario:',
+            question: q.question || '',
+            options: Array.isArray(q.options) ? q.options : [],
+            correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
+            explanation: q.explanation || ''
+          }));
+          
+          return NextResponse.json({ mode, data: { quizzes }, sources: concept.sources });
+        }
+      } catch (err: any) {
+        console.error('[API] JSON Parse fail:', err.message, '\nRaw text:', generatedText);
+        return NextResponse.json({ 
+          mode, 
+          error: 'Failed to parse AI generated response as structured JSON. Try again or regenerate.',
+          data: { raw: generatedText }, 
+          sources: concept.sources 
+        }, { status: 200 });
       }
     }
 

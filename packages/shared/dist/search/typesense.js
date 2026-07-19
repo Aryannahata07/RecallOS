@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.indexConcept = exports.findSimilarConcept = exports.setupTypesenseSchema = exports.CONCEPTS_COLLECTION = exports.typesenseClient = void 0;
+exports.indexConcept = exports.findSimilarConcept = exports.setupTypesenseSchema = exports.reindexAllConcepts = exports.CONCEPTS_COLLECTION = exports.typesenseClient = void 0;
 const typesense_1 = require("typesense");
+const db_1 = require("../database/db");
+const extractor_1 = require("../queue/extractor");
 const host = process.env.TYPESENSE_HOST || 'localhost';
 const port = parseInt(process.env.TYPESENSE_PORT || '8108', 10);
 const protocol = process.env.TYPESENSE_PROTOCOL || 'http';
@@ -21,6 +23,46 @@ exports.CONCEPTS_COLLECTION = 'concepts';
 /**
  * Ensures the 'concepts' collection schema is initialized in Typesense.
  */
+const reindexAllConcepts = async () => {
+    console.log('[Typesense] Starting automatic re-indexing of all concepts from Postgres...');
+    try {
+        const concepts = await db_1.prisma.concept.findMany({
+            select: {
+                id: true,
+                name: true,
+                description: true,
+            },
+        });
+        console.log(`[Typesense] Found ${concepts.length} concepts to index.`);
+        let indexedCount = 0;
+        for (const concept of concepts) {
+            try {
+                const textToEmbed = `${concept.name}: ${concept.description}`;
+                const embedding = await (0, extractor_1.generateEmbedding)(textToEmbed);
+                if (embedding && embedding.length > 0) {
+                    await exports.typesenseClient
+                        .collections(exports.CONCEPTS_COLLECTION)
+                        .documents()
+                        .upsert({
+                        id: concept.id,
+                        name: concept.name,
+                        description: concept.description,
+                        embedding,
+                    });
+                    indexedCount++;
+                }
+            }
+            catch (innerError) {
+                console.error(`[Typesense] Failed to index concept ${concept.id}:`, innerError.message || innerError);
+            }
+        }
+        console.log(`[Typesense] Automatic re-indexing completed. Indexed ${indexedCount} of ${concepts.length} concepts.`);
+    }
+    catch (error) {
+        console.error('[Typesense] Critical error during automatic re-indexing:', error.message || error);
+    }
+};
+exports.reindexAllConcepts = reindexAllConcepts;
 const setupTypesenseSchema = async () => {
     try {
         await exports.typesenseClient.collections(exports.CONCEPTS_COLLECTION).retrieve();
@@ -46,6 +88,10 @@ const setupTypesenseSchema = async () => {
                 ],
             });
             console.log('[Typesense] Schema created successfully');
+            // Asynchronously trigger re-indexing in the background
+            (0, exports.reindexAllConcepts)().catch(err => {
+                console.error('[Typesense] Background re-indexing failed:', err);
+            });
         }
         else {
             console.error('[Typesense] Error retrieving schema:', error);

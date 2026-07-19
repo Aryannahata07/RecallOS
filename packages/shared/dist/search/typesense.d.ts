@@ -10,6 +10,7 @@ export interface TypesenseConceptDocument {
 /**
  * Ensures the 'concepts' collection schema is initialized in Typesense.
  */
+export declare const reindexAllConcepts: () => Promise<void>;
 export declare const setupTypesenseSchema: () => Promise<void>;
 export interface SearchConceptResult {
     id: string;

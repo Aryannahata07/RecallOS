@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, CheckCircle2, Video, Code2, MessageSquare, FileText, ArrowLeft, Clock } from 'lucide-react';
+import { Loader2, CheckCircle2, Video, Code2, MessageSquare, FileText, ArrowLeft } from 'lucide-react';
 import { Concept, ReviewMode, FSRSRating } from '@/types/dashboard';
+import { FlashcardView } from './FlashcardView';
+import { QuizView } from './QuizView';
 
 interface EmbeddedReviewSessionProps {
   onFinished: () => void;
@@ -15,8 +17,6 @@ export function EmbeddedReviewSession({ onFinished }: EmbeddedReviewSessionProps
   const [generated, setGenerated] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [flipped, setFlipped] = useState(false);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [rated, setRated] = useState(false);
 
   useEffect(() => {
@@ -35,8 +35,6 @@ export function EmbeddedReviewSession({ onFinished }: EmbeddedReviewSessionProps
     setMode(m);
     setGenerated(null);
     setError(null);
-    setFlipped(false);
-    setSelectedOption(null);
     setLoading(true);
     try {
       const res = await fetch('/api/generate-review', {
@@ -289,60 +287,15 @@ export function EmbeddedReviewSession({ onFinished }: EmbeddedReviewSessionProps
         )}
 
         {!loading && generated?.mode === 'flashcard' && (
-          <div className="flashcard-container" onClick={() => setFlipped(f => !f)}>
-            <div className={`flashcard ${flipped ? 'flipped' : ''}`}>
-              <div className="card-front">
-                <span className="card-label">Question</span>
-                <p>{generated.data.question}</p>
-                <span className="flip-hint">Click to reveal answer</span>
-              </div>
-              <div className="card-back">
-                <span className="card-label">Answer</span>
-                <p>{generated.data.answer}</p>
-              </div>
-            </div>
-          </div>
+          <FlashcardView flashcards={generated.data.flashcards} />
         )}
 
         {!loading && generated?.mode === 'quiz' && (
-          <div className="quiz-container">
-            <div className="quiz-scenario">{generated.data.scenario}</div>
-            <p className="quiz-question">{generated.data.question}</p>
-            <div className="quiz-options">
-              {generated.data.options?.map((opt: string, i: number) => {
-                const isCorrect = i === generated.data.correctIndex;
-                const isSelected = i === selectedOption;
-                let cls = 'quiz-option';
-                if (selectedOption !== null) {
-                  if (isCorrect) cls += ' correct';
-                  else if (isSelected) cls += ' wrong';
-                }
-                return (
-                  <button
-                    key={i}
-                    className={cls}
-                    onClick={() => setSelectedOption(i)}
-                    disabled={selectedOption !== null}
-                    style={{ display: 'flex', alignItems: 'center' }}
-                  >
-                    {selectedOption !== null && isCorrect && (
-                      <span className="quiz-dot quiz-dot-green" title="Correct Answer" />
-                    )}
-                    {selectedOption !== null && isSelected && !isCorrect && (
-                      <span className="quiz-dot quiz-dot-red" title="Incorrect Answer" />
-                    )}
-                    <span>{opt}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {selectedOption !== null && (
-              <div className="quiz-explanation">
-                <strong>{selectedOption === generated.data.correctIndex ? 'Correct' : 'Incorrect'}</strong>
-                <p>{generated.data.explanation}</p>
-              </div>
-            )}
-          </div>
+          <QuizView
+            quizzes={generated.data.quizzes}
+            loading={loading}
+            onRegenerate={() => generate('quiz', currentConcept.id)}
+          />
         )}
       </div>
 
