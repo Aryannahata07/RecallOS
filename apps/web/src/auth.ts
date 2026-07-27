@@ -6,22 +6,9 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '@recallos/shared';
 import { authConfig } from './auth.config';
 
-const useSecureCookies = process.env.NODE_ENV === 'production';
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),
-  cookies: useSecureCookies ? {
-    sessionToken: {
-      name: '__Secure-next-auth.session-token',
-      options: {
-        httpOnly: true,
-        sameSite: 'none',
-        path: '/',
-        secure: true,
-      },
-    },
-  } : undefined,
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID!,

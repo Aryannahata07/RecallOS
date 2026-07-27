@@ -1,11 +1,24 @@
 import type { NextAuthConfig } from 'next-auth';
 
+const useSecureCookies = process.env.NODE_ENV === 'production';
+
 export const authConfig = {
   pages: {
     signIn: '/login',
     error: '/login',
   },
   session: { strategy: 'jwt' },
+  cookies: useSecureCookies ? {
+    sessionToken: {
+      name: '__Secure-next-auth.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'none',
+        path: '/',
+        secure: true,
+      },
+    },
+  } : undefined,
   providers: [], // Providers added in auth.ts (Node runtime)
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
