@@ -9,7 +9,8 @@
     "storage"
   ],
   "host_permissions": [
-    "http://localhost:3000/*",
+    "http://localhost/*",
+    "https://recall-os-web.vercel.app/*",
     "*://leetcode.com/*",
     "*://chatgpt.com/*",
     "*://claude.ai/*",

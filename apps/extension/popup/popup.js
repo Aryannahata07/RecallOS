@@ -95,7 +95,7 @@ document.getElementById('captureBtn').addEventListener('click', async () => {
             window.close();
           }, 2000);
         } else {
-          showStatus(response?.error || 'Failed to send to server. Is Next.js running?', 'error');
+          showStatus(response?.error || 'Failed to send to server.', 'error');
           btn.disabled = false;
         }
       });
