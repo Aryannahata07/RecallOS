@@ -59,9 +59,12 @@ export const extractConceptsAndCards = async (
 
   // ── Groq ──────────────────────────────────────────────────────────────────
   if (provider === 'groq') {
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error("Missing GROQ_API_KEY environment variable. Please configure it in your service dashboard (e.g. Render Dashboard -> Environment Settings) or local .env file.");
+    }
     const client = new OpenAI({
       baseURL: 'https://api.groq.com/openai/v1',
-      apiKey: process.env.GROQ_API_KEY || '',
+      apiKey: process.env.GROQ_API_KEY,
     });
     try {
       const response = await client.chat.completions.create({
@@ -83,7 +86,10 @@ export const extractConceptsAndCards = async (
 
   // ── Gemini ────────────────────────────────────────────────────────────────
   if (provider === 'gemini') {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error("Missing GEMINI_API_KEY environment variable. Please configure it in your service dashboard (e.g. Render Dashboard -> Environment Settings) or local .env file.");
+    }
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.0-flash-lite',
       generationConfig: {
@@ -120,11 +126,14 @@ export const extractConceptsAndCards = async (
       throw error;
     }
   }
-
+ 
   // ── OpenAI / Ollama ───────────────────────────────────────────────────────
+  if (provider === 'openai' && !process.env.OPENAI_API_KEY) {
+    throw new Error("Missing OPENAI_API_KEY environment variable. Please configure it in your service dashboard or local .env file.");
+  }
   const config = provider === 'ollama'
     ? { baseURL: process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1', apiKey: 'ollama', model: process.env.OLLAMA_MODEL || 'llama3' }
-    : { baseURL: undefined, apiKey: process.env.OPENAI_API_KEY || '', model: 'gpt-4o-mini' };
+    : { baseURL: undefined, apiKey: process.env.OPENAI_API_KEY, model: 'gpt-4o-mini' };
   const client = new OpenAI({ baseURL: config.baseURL, apiKey: config.apiKey });
   try {
     const response = await client.chat.completions.create({
@@ -152,7 +161,11 @@ export const generateEmbedding = async (text: string): Promise<number[]> => {
   const provider = process.env.LLM_PROVIDER || 'gemini';
 
   if (provider === 'groq' || provider === 'gemini') {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn(`[LLM Embedding Warning] Missing GEMINI_API_KEY environment variable. Skipping semantic deduplication.`);
+      return new Array(768).fill(0); // graceful degradation — skip deduplication
+    }
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
     try {
       const result = await model.embedContent(text);
@@ -169,7 +182,11 @@ export const generateEmbedding = async (text: string): Promise<number[]> => {
     return res.data[0].embedding;
   }
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' });
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn(`[LLM Embedding Warning] Missing OPENAI_API_KEY environment variable. Skipping semantic deduplication.`);
+    return new Array(1536).fill(0); // graceful degradation — skip deduplication
+  }
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const res = await client.embeddings.create({ model: 'text-embedding-3-small', input: text });
   return res.data[0].embedding;
 };

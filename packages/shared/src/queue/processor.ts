@@ -73,33 +73,58 @@ export const processIngestionJob = async (job: Job<ConceptIngestionJobPayload>) 
       }
 
       if (!conceptId) {
-        // Brand new concept — create it with source attached immediately
-        const newConcept = await prisma.concept.create({
-          data: {
-            name: extracted.name,
-            description: extracted.description,
-            keyPrinciples: extracted.keyPrinciples,
-            pitfalls: extracted.pitfalls,
-            mentalModels: extracted.mentalModels,
-            difficulty: 0.3,
-            stability: 1.0,
-            userId,
-            sources: {
-              connect: { id: source.id }
+        try {
+          // Brand new concept — create it with source attached immediately
+          const newConcept = await prisma.concept.create({
+            data: {
+              name: extracted.name,
+              description: extracted.description,
+              keyPrinciples: extracted.keyPrinciples,
+              pitfalls: extracted.pitfalls,
+              mentalModels: extracted.mentalModels,
+              difficulty: 0.3,
+              stability: 1.0,
+              userId,
+              sources: {
+                connect: { id: source.id }
+              }
             }
-          }
-        });
-        conceptId = newConcept.id;
-
-        if (embedding.length > 0) {
-          await indexConcept({
-            id: newConcept.id,
-            name: extracted.name,
-            description: extracted.description,
-            embedding
           });
+          conceptId = newConcept.id;
+
+          if (embedding.length > 0) {
+            await indexConcept({
+              id: newConcept.id,
+              name: extracted.name,
+              description: extracted.description,
+              embedding
+            });
+          }
+          console.log(`[Processor] Created new concept with linked source: ${extracted.name}`);
+        } catch (err: any) {
+          // Handle concurrency race conditions where the concept might have been created
+          // by another job between the findUnique check and this create call.
+          if (err.code === 'P2002') {
+            console.log(`[Processor] Concept already exists (concurrency race), updating: ${extracted.name}`);
+            const existing = await prisma.concept.findUnique({
+              where: { name_userId: { name: extracted.name, userId } }
+            });
+            if (existing) {
+              conceptId = existing.id;
+              await prisma.concept.update({
+                where: { id: conceptId },
+                data: {
+                  keyPrinciples: extracted.keyPrinciples,
+                  pitfalls: extracted.pitfalls,
+                  mentalModels: extracted.mentalModels,
+                  sources: { connect: { id: source.id } },
+                }
+              });
+            }
+          } else {
+            throw err;
+          }
         }
-        console.log(`[Processor] Created new concept with linked source: ${extracted.name}`);
       }
     }
   }

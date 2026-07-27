@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -15,17 +15,30 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  useEffect(() => {
+    setLoading(false);
+    setGoogleLoading(false);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const result = await signIn('credentials', { email, password, redirect: false });
-    if (result?.error) {
-      setError('Invalid email or password. Please try again.');
+    try {
+      const result = await signIn('credentials', { email, password, redirect: false });
+      if (result?.error) {
+        setError('Invalid email or password. Please try again.');
+        setLoading(false);
+      } else {
+        router.push('/');
+        router.refresh();
+        // Safety fallback: if Next.js middleware redirects us back to /login
+        // because of cookie/session issues, reset the button state after 3 seconds.
+        setTimeout(() => setLoading(false), 3000);
+      }
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
       setLoading(false);
-    } else {
-      router.push('/');
-      router.refresh();
     }
   };
 

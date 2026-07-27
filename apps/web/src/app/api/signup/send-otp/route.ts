@@ -38,6 +38,10 @@ export async function POST(req: Request) {
     const mailResult = await sendOtpEmail(email, otp);
 
     if (!mailResult.success) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Development Fallback] Failed to send email via Resend: ${mailResult.error}. Bypassing since we are in dev mode.`);
+        return NextResponse.json({ success: true, message: 'OTP generated (read from console logs)' });
+      }
       return NextResponse.json({ error: `Failed to send email: ${mailResult.error}` }, { status: 500 });
     }
 
