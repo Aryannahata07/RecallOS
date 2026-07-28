@@ -100,29 +100,48 @@ ${blueprintContext}`;
     }
 
     let generatedText = '';
-    const provider = process.env.LLM_PROVIDER || 'gemini';
+    const preferredProvider = process.env.LLM_PROVIDER || 'gemini';
+    const providersToTry = preferredProvider === 'groq' ? ['groq', 'gemini'] : ['gemini', 'groq'];
+    let lastError: any = null;
 
-    if (provider === 'groq') {
-      const client = new OpenAI({
-        baseURL: 'https://api.groq.com/openai/v1',
-        apiKey: process.env.GROQ_API_KEY || '',
-      });
-      const isJson = mode !== 'summary';
-      const response = await client.chat.completions.create({
-        model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'You generate dynamic educational review content. Be concise and insightful.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.7,
-        ...(isJson ? { response_format: { type: 'json_object' } } : {}),
-      });
-      generatedText = response.choices[0].message.content || '';
-    } else {
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
-      const result = await model.generateContent(prompt);
-      generatedText = result.response.text();
+    for (const provider of providersToTry) {
+      try {
+        if (provider === 'groq' && process.env.GROQ_API_KEY) {
+          console.log('[API] Attempting review generation via Groq...');
+          const client = new OpenAI({
+            baseURL: 'https://api.groq.com/openai/v1',
+            apiKey: process.env.GROQ_API_KEY,
+          });
+          const isJson = mode !== 'summary';
+          const response = await client.chat.completions.create({
+            model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+            messages: [
+              { role: 'system', content: 'You generate dynamic educational review content. Be concise and insightful.' },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.7,
+            ...(isJson ? { response_format: { type: 'json_object' } } : {}),
+          });
+          generatedText = response.choices[0].message.content || '';
+          break; // Success!
+        }
+
+        if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+          console.log('[API] Attempting review generation via Gemini...');
+          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+          const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+          const result = await model.generateContent(prompt);
+          generatedText = result.response.text();
+          break; // Success!
+        }
+      } catch (err: any) {
+        console.warn(`[API] Provider ${provider} failed, trying fallback:`, err.message || err);
+        lastError = err;
+      }
+    }
+
+    if (!generatedText) {
+      throw lastError || new Error('All LLM providers failed to generate review content.');
     }
 
     // Parse JSON for flashcard/quiz modes

@@ -55,102 +55,99 @@ export const extractConceptsAndCards = async (
   rawContent: string,
   contentType: string
 ): Promise<ExtractedConcept[]> => {
-  const provider = process.env.LLM_PROVIDER || 'gemini';
+  const preferredProvider = process.env.LLM_PROVIDER || 'gemini';
+  const providersToTry = preferredProvider === 'groq' ? ['groq', 'gemini'] : ['gemini', 'groq'];
+  let lastError: any = null;
 
-  // ── Groq ──────────────────────────────────────────────────────────────────
-  if (provider === 'groq') {
-    if (!process.env.GROQ_API_KEY) {
-      throw new Error("Missing GROQ_API_KEY environment variable. Please configure it in your service dashboard (e.g. Render Dashboard -> Environment Settings) or local .env file.");
-    }
-    const client = new OpenAI({
-      baseURL: 'https://api.groq.com/openai/v1',
-      apiKey: process.env.GROQ_API_KEY,
-    });
+  for (const provider of providersToTry) {
     try {
+      if (provider === 'groq' && process.env.GROQ_API_KEY) {
+        console.log('[Extractor] Attempting extraction via Groq...');
+        const client = new OpenAI({
+          baseURL: 'https://api.groq.com/openai/v1',
+          apiKey: process.env.GROQ_API_KEY,
+        });
+        const response = await client.chat.completions.create({
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: 'You build Knowledge Blueprints for a spaced-repetition learning system. Output ONLY valid JSON.' },
+            { role: 'user', content: EXTRACTION_PROMPT(rawContent, contentType) },
+          ],
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+        });
+        const parsed = JSON.parse(response.choices[0].message.content || '{}');
+        return parsed.concepts || [];
+      }
+
+      if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+        console.log('[Extractor] Attempting extraction via Gemini...');
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({
+          model: 'gemini-2.0-flash-lite',
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: SchemaType.OBJECT,
+              properties: {
+                concepts: {
+                  type: SchemaType.ARRAY,
+                  items: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                      name: { type: SchemaType.STRING },
+                      description: { type: SchemaType.STRING },
+                      keyPrinciples: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                      pitfalls: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                      mentalModels: { type: SchemaType.STRING },
+                    },
+                    required: ['name', 'description', 'keyPrinciples', 'pitfalls', 'mentalModels'],
+                  },
+                },
+              },
+              required: ['concepts'],
+            },
+          },
+        });
+        const result = await model.generateContent(EXTRACTION_PROMPT(rawContent, contentType));
+        const parsed = JSON.parse(result.response.text());
+        return parsed.concepts || [];
+      }
+    } catch (error: any) {
+      console.warn(`[Extractor] Provider ${provider} failed, trying fallback:`, error.message || error);
+      lastError = error;
+    }
+  }
+
+  // ── OpenAI / Ollama Backup Fallback ───────────────────────────────────────
+  try {
+    const isOllama = preferredProvider === 'ollama';
+    const hasOpenAiKey = !!process.env.OPENAI_API_KEY;
+    if (isOllama || hasOpenAiKey) {
+      console.log('[Extractor] Attempting final backup fallback via OpenAI/Ollama...');
+      const config = isOllama
+        ? { baseURL: process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1', apiKey: 'ollama', model: process.env.OLLAMA_MODEL || 'llama3' }
+        : { baseURL: undefined, apiKey: process.env.OPENAI_API_KEY, model: 'gpt-4o-mini' };
+      const client = new OpenAI({ baseURL: config.baseURL, apiKey: config.apiKey });
       const response = await client.chat.completions.create({
-        model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+        model: config.model,
         messages: [
           { role: 'system', content: 'You build Knowledge Blueprints for a spaced-repetition learning system. Output ONLY valid JSON.' },
           { role: 'user', content: EXTRACTION_PROMPT(rawContent, contentType) },
         ],
-        temperature: 0.2,
         response_format: { type: 'json_object' },
+        temperature: 0.2,
       });
       const parsed = JSON.parse(response.choices[0].message.content || '{}');
       return parsed.concepts || [];
-    } catch (error: any) {
-      console.error(`[LLM Extraction Error] Groq failed:`, error.message);
-      throw error;
     }
+  } catch (fallbackError: any) {
+    console.error(`[Extractor] Final backup OpenAI/Ollama failed:`, fallbackError.message || fallbackError);
+    lastError = fallbackError;
   }
 
-  // ── Gemini ────────────────────────────────────────────────────────────────
-  if (provider === 'gemini') {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("Missing GEMINI_API_KEY environment variable. Please configure it in your service dashboard (e.g. Render Dashboard -> Environment Settings) or local .env file.");
-    }
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-lite',
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            concepts: {
-              type: SchemaType.ARRAY,
-              items: {
-                type: SchemaType.OBJECT,
-                properties: {
-                  name: { type: SchemaType.STRING },
-                  description: { type: SchemaType.STRING },
-                  keyPrinciples: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                  pitfalls: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                  mentalModels: { type: SchemaType.STRING },
-                },
-                required: ['name', 'description', 'keyPrinciples', 'pitfalls', 'mentalModels'],
-              },
-            },
-          },
-          required: ['concepts'],
-        },
-      },
-    });
-    try {
-      const result = await model.generateContent(EXTRACTION_PROMPT(rawContent, contentType));
-      const parsed = JSON.parse(result.response.text());
-      return parsed.concepts || [];
-    } catch (error: any) {
-      console.error(`[LLM Extraction Error] Gemini failed:`, error.message);
-      throw error;
-    }
-  }
- 
-  // ── OpenAI / Ollama ───────────────────────────────────────────────────────
-  if (provider === 'openai' && !process.env.OPENAI_API_KEY) {
-    throw new Error("Missing OPENAI_API_KEY environment variable. Please configure it in your service dashboard or local .env file.");
-  }
-  const config = provider === 'ollama'
-    ? { baseURL: process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1', apiKey: 'ollama', model: process.env.OLLAMA_MODEL || 'llama3' }
-    : { baseURL: undefined, apiKey: process.env.OPENAI_API_KEY, model: 'gpt-4o-mini' };
-  const client = new OpenAI({ baseURL: config.baseURL, apiKey: config.apiKey });
-  try {
-    const response = await client.chat.completions.create({
-      model: config.model,
-      messages: [
-        { role: 'system', content: 'You build Knowledge Blueprints for a spaced-repetition learning system. Output ONLY valid JSON.' },
-        { role: 'user', content: EXTRACTION_PROMPT(rawContent, contentType) },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.2,
-    });
-    const parsed = JSON.parse(response.choices[0].message.content || '{}');
-    return parsed.concepts || [];
-  } catch (error: any) {
-    console.error(`[LLM Extraction Error] OpenAI/Ollama failed:`, error.message);
-    throw error;
-  }
+  throw lastError || new Error("All LLM providers failed. Please configure at least one active API key (GROQ_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY).");
 };
 
 // ─── Embedding Generation ─────────────────────────────────────────────────────
