@@ -1,8 +1,19 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
-const resendApiKey = process.env.RESEND_API_KEY;
-const resend = resendApiKey ? new Resend(resendApiKey) : null;
-const fromEmail = process.env.EMAIL_FROM || 'RecallOS <onboarding@resend.dev>';
+const smtpUser = process.env.SMTP_USER;
+const smtpPass = process.env.SMTP_PASS;
+
+const transporter = smtpUser && smtpPass
+  ? nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    })
+  : null;
+
+const fromEmail = process.env.EMAIL_FROM || `RecallOS <${smtpUser || 'onboarding@resend.dev'}>`;
 
 export async function sendOtpEmail(email: string, otp: string) {
   // Always log to terminal in development for fast debugging
@@ -10,15 +21,15 @@ export async function sendOtpEmail(email: string, otp: string) {
   console.log(`[Email Service] Verification OTP for ${email}: ${otp}`);
   console.log(`==================================================\n`);
 
-  if (!resend) {
-    console.warn('[Email Service] RESEND_API_KEY is not configured in .env — logged OTP to terminal above.');
+  if (!transporter) {
+    console.warn('[Email Service] SMTP_USER or SMTP_PASS is not configured in environment variables — logged OTP to terminal above.');
     return { success: true, mode: 'console' };
   }
 
   try {
-    const { data, error } = await resend.emails.send({
+    const info = await transporter.sendMail({
       from: fromEmail,
-      to: [email],
+      to: email,
       subject: `${otp} is your RecallOS verification code`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background-color: #0a0b0f; color: #e8eaf0; border-radius: 16px; border: 1px solid #252736;">
@@ -38,14 +49,10 @@ export async function sendOtpEmail(email: string, otp: string) {
       `,
     });
 
-    if (error) {
-      console.error('[Email Service] Resend API Error:', error);
-      return { success: false, error: error.message };
-    }
-
-    return { success: true, data };
+    console.log('[Email Service] Email sent successfully via SMTP:', info.messageId);
+    return { success: true, data: info };
   } catch (err: any) {
-    console.error('[Email Service] Exception sending email:', err);
+    console.error('[Email Service] Exception sending email via SMTP:', err);
     return { success: false, error: err.message };
   }
 }
