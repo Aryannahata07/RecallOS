@@ -42,8 +42,8 @@ export default async function DashboardPage() {
       totalSources={totalSources}
       dueNow={dueNow}
       masteredConcepts={masteredConcepts}
-      allConcepts={allConcepts as any}
-      allSources={allSources as any}
+      allConcepts={JSON.parse(JSON.stringify(allConcepts))}
+      allSources={JSON.parse(JSON.stringify(allSources))}
       signOutAction={handleSignOut}
     />
   );
