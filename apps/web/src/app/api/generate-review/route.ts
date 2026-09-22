@@ -129,7 +129,7 @@ ${blueprintContext}`;
         if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
           console.log('[API] Attempting review generation via Gemini...');
           const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-          const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+          const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
           const result = await model.generateContent(prompt);
           generatedText = result.response.text();
           break; // Success!
