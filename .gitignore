@@ -3,3 +3,10 @@ dist
 .env
 /implementation_plan.md
 /task.md
+
+/opensource_dataset_offset.tsv
+
+/benchmark*
+
+/*.md
+/scratch
